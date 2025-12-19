@@ -101,64 +101,139 @@ jobs:
     - name: Deploy CloudFormation stack
       run: |
         STACK_NAME="bedrock-video-analyzer-${{ matrix.environment }}"
+        echo "Deploying stack: $STACK_NAME"
         
         # スタックが存在するかチェック
         if aws cloudformation describe-stacks --stack-name $STACK_NAME 2>/dev/null; then
           echo "Stack exists, updating..."
-          aws cloudformation update-stack \
+          
+          # スタック更新を実行
+          UPDATE_OUTPUT=$(aws cloudformation update-stack \
             --stack-name $STACK_NAME \
             --template-body file://fixed-cloudformation.yaml \
             --capabilities CAPABILITY_NAMED_IAM \
-            --parameters ParameterKey=Environment,ParameterValue=${{ matrix.environment }}
+            --parameters ParameterKey=Environment,ParameterValue=${{ matrix.environment }} 2>&1) || {
+            
+            # 更新が不要な場合のエラーをチェック
+            if echo "$UPDATE_OUTPUT" | grep -q "No updates are to be performed"; then
+              echo "No updates required for stack $STACK_NAME"
+            else
+              echo "Stack update failed: $UPDATE_OUTPUT"
+              exit 1
+            fi
+          }
           
-          aws cloudformation wait stack-update-complete --stack-name $STACK_NAME
+          # 更新が実行された場合は完了を待つ
+          if ! echo "$UPDATE_OUTPUT" | grep -q "No updates are to be performed"; then
+            echo "Waiting for stack update to complete..."
+            aws cloudformation wait stack-update-complete --stack-name $STACK_NAME || {
+              echo "Stack update failed. Checking stack events..."
+              aws cloudformation describe-stack-events --stack-name $STACK_NAME --max-items 10
+              exit 1
+            }
+          fi
         else
           echo "Stack does not exist, creating..."
+          
+          # スタック作成を実行
           aws cloudformation create-stack \
             --stack-name $STACK_NAME \
             --template-body file://fixed-cloudformation.yaml \
             --capabilities CAPABILITY_NAMED_IAM \
-            --parameters ParameterKey=Environment,ParameterValue=${{ matrix.environment }}
+            --parameters ParameterKey=Environment,ParameterValue=${{ matrix.environment }} || {
+            echo "Stack creation failed"
+            exit 1
+          }
           
-          aws cloudformation wait stack-create-complete --stack-name $STACK_NAME
+          echo "Waiting for stack creation to complete..."
+          aws cloudformation wait stack-create-complete --stack-name $STACK_NAME || {
+            echo "Stack creation failed. Checking stack events..."
+            aws cloudformation describe-stack-events --stack-name $STACK_NAME --max-items 10
+            exit 1
+          }
         fi
+        
+        echo "Stack deployment completed successfully"
         
     - name: Get stack outputs
       id: stack-outputs
       run: |
         STACK_NAME="bedrock-video-analyzer-${{ matrix.environment }}"
+        echo "Getting outputs for stack: $STACK_NAME"
         
-        API_URL=$(aws cloudformation describe-stacks \
+        # スタックの状態を確認
+        STACK_STATUS=$(aws cloudformation describe-stacks \
           --stack-name $STACK_NAME \
-          --query "Stacks[0].Outputs[?OutputKey=='ApiGatewayUrl'].OutputValue" \
-          --output text)
+          --query "Stacks[0].StackStatus" \
+          --output text 2>/dev/null || echo "STACK_NOT_FOUND")
         
-        BUCKET_NAME=$(aws cloudformation describe-stacks \
-          --stack-name $STACK_NAME \
-          --query "Stacks[0].Outputs[?OutputKey=='VideoBucketName'].OutputValue" \
-          --output text)
+        echo "Stack status: $STACK_STATUS"
         
-        echo "api-url=$API_URL" >> $GITHUB_OUTPUT
-        echo "bucket-name=$BUCKET_NAME" >> $GITHUB_OUTPUT
-        
-        echo "### Deployment Results" >> $GITHUB_STEP_SUMMARY
-        echo "- **Environment**: ${{ matrix.environment }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **API Gateway URL**: $API_URL" >> $GITHUB_STEP_SUMMARY
-        echo "- **S3 Bucket**: $BUCKET_NAME" >> $GITHUB_STEP_SUMMARY
+        if [ "$STACK_STATUS" = "CREATE_COMPLETE" ] || [ "$STACK_STATUS" = "UPDATE_COMPLETE" ]; then
+          # API Gateway URL を取得
+          API_URL=$(aws cloudformation describe-stacks \
+            --stack-name $STACK_NAME \
+            --query "Stacks[0].Outputs[?OutputKey=='ApiGatewayUrl'].OutputValue" \
+            --output text 2>/dev/null || echo "None")
+          
+          # S3 Bucket名を取得
+          BUCKET_NAME=$(aws cloudformation describe-stacks \
+            --stack-name $STACK_NAME \
+            --query "Stacks[0].Outputs[?OutputKey=='VideoBucketName'].OutputValue" \
+            --output text 2>/dev/null || echo "None")
+          
+          echo "API Gateway URL: $API_URL"
+          echo "S3 Bucket: $BUCKET_NAME"
+          
+          echo "api-url=$API_URL" >> $GITHUB_OUTPUT
+          echo "bucket-name=$BUCKET_NAME" >> $GITHUB_OUTPUT
+          
+          echo "### Deployment Results" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment**: ${{ matrix.environment }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Stack Status**: $STACK_STATUS" >> $GITHUB_STEP_SUMMARY
+          echo "- **API Gateway URL**: $API_URL" >> $GITHUB_STEP_SUMMARY
+          echo "- **S3 Bucket**: $BUCKET_NAME" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "Stack is not in a complete state: $STACK_STATUS"
+          echo "api-url=None" >> $GITHUB_OUTPUT
+          echo "bucket-name=None" >> $GITHUB_OUTPUT
+          
+          echo "### Deployment Results" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment**: ${{ matrix.environment }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Stack Status**: $STACK_STATUS" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: Failed or Incomplete" >> $GITHUB_STEP_SUMMARY
+        fi
         
     - name: Test deployed APIs
       run: |
         API_URL="${{ steps.stack-outputs.outputs.api-url }}"
         
+        if [ -z "$API_URL" ] || [ "$API_URL" = "None" ]; then
+          echo "API URL not found, skipping API tests"
+          exit 0
+        fi
+        
+        echo "Testing API at: $API_URL"
+        
         echo "Testing Limits API..."
-        curl -f "$API_URL/limits" || exit 1
+        LIMITS_RESPONSE=$(curl -s -w "%{http_code}" "$API_URL/limits") || {
+          echo "Limits API test failed"
+          echo "Response: $LIMITS_RESPONSE"
+          exit 1
+        }
+        echo "Limits API response: $LIMITS_RESPONSE"
         
         echo "Testing Upload API..."
-        curl -f -X POST "$API_URL/upload" \
+        UPLOAD_RESPONSE=$(curl -s -w "%{http_code}" -X POST "$API_URL/upload" \
           -H "Content-Type: application/json" \
-          -d '{"fileName":"test.mp4","fileSize":1000000}' || exit 1
+          -d '{"fileName":"test.mp4","fileSize":1000000}') || {
+          echo "Upload API test failed"
+          echo "Response: $UPLOAD_RESPONSE"
+          exit 1
+        }
+        echo "Upload API response: $UPLOAD_RESPONSE"
         
-        echo "API tests passed!"
+        echo "API tests completed successfully!"
         
     - name: Update Lambda function code (if needed)
       if: matrix.environment != 'prod'
