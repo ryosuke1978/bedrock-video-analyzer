@@ -4,7 +4,7 @@ Amazon Bedrock TwelveLabs Pegasus 1.2を使用した動画解析デモWebアプ�
 
 ## 🚀 CI/CD Pipeline Status
 
-![Deploy Status](https://github.com/your-username/bedrock-video-analyzer/workflows/Deploy%20Bedrock%20Video%20Analyzer/badge.svg)
+![Deploy Status](https://github.com/ryosuke1978/bedrock-video-analyzer/workflows/Deploy%20Bedrock%20Video%20Analyzer/badge.svg)
 
 ## 📋 概要
 
@@ -32,7 +32,7 @@ Amazon Bedrock TwelveLabs Pegasus 1.2を使用した動画解析デモWebアプ�
 
 ```bash
 # リポジトリをクローン
-git clone https://github.com/your-username/bedrock-video-analyzer.git
+git clone https://github.com/ryosuke1978/bedrock-video-analyzer.git
 cd bedrock-video-analyzer
 
 # 依存関係をインストール
@@ -65,7 +65,7 @@ npm run deploy:dev
 
 #### 自動デプロイ
 
-- **main**ブランチ → 本番環境 (prod)
+- **clean-main**ブランチ → 本番環境 (prod)
 - **develop**ブランチ → 開発環境 (dev)
 - **Pull Request** → 開発環境でテスト
 

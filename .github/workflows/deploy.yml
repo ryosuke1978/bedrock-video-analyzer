@@ -2,9 +2,9 @@ name: Deploy Bedrock Video Analyzer
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ clean-main, develop ]
   pull_request:
-    branches: [ main ]
+    branches: [ clean-main ]
   workflow_dispatch:
     inputs:
       environment:
@@ -27,7 +27,7 @@ jobs:
     strategy:
       matrix:
         environment: 
-          - ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'prod' || 'dev') }}
+          - ${{ github.event.inputs.environment || (github.ref == 'refs/heads/clean-main' && 'prod' || 'dev') }}
     
     environment: ${{ matrix.environment }}
     
