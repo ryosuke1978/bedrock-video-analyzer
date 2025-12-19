@@ -77,11 +77,10 @@ Resources:
         - Key: Application
           Value: BedrockVideoAnalyzer
 
-  # IAM Role for Lambda functions (固有名を使用)
+  # IAM Role for Lambda functions
   LambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub 'BedrockVideoAnalyzer-Lambda-${Environment}-${AWS::AccountId}'
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -102,11 +101,13 @@ Resources:
                   - s3:PutObject
                   - s3:DeleteObject
                   - s3:GetObjectVersion
-                Resource: !Sub '${VideoBucket}/*'
+                Resource: 
+                  - !Sub '${VideoBucket}/*'
               - Effect: Allow
                 Action:
                   - s3:ListBucket
-                Resource: !Ref VideoBucket
+                Resource: 
+                  - !GetAtt VideoBucket.Arn
               - Effect: Allow
                 Action:
                   - dynamodb:GetItem
@@ -123,7 +124,8 @@ Resources:
                   - logs:CreateLogGroup
                   - logs:CreateLogStream
                   - logs:PutLogEvents
-                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*'
+                Resource: 
+                  - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*'
 
   # Upload Lambda Function (シンプルなプレースホルダー)
   UploadFunction:
