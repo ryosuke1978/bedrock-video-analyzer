@@ -104,8 +104,40 @@ jobs:
         echo "Deploying stack: $STACK_NAME"
         
         # スタックが存在するかチェック
-        if aws cloudformation describe-stacks --stack-name $STACK_NAME 2>/dev/null; then
-          echo "Stack exists, updating..."
+        STACK_STATUS=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].StackStatus" --output text 2>/dev/null || echo "STACK_NOT_FOUND")
+        echo "Current stack status: $STACK_STATUS"
+        
+        if [ "$STACK_STATUS" = "ROLLBACK_COMPLETE" ]; then
+          echo "Stack is in ROLLBACK_COMPLETE state, deleting and recreating..."
+          
+          # 失敗したスタックを削除
+          aws cloudformation delete-stack --stack-name $STACK_NAME
+          echo "Waiting for stack deletion to complete..."
+          aws cloudformation wait stack-delete-complete --stack-name $STACK_NAME || {
+            echo "Stack deletion failed or timed out"
+            exit 1
+          }
+          
+          # スタックを新規作成
+          echo "Creating new stack..."
+          aws cloudformation create-stack \
+            --stack-name $STACK_NAME \
+            --template-body file://fixed-cloudformation.yaml \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --parameters ParameterKey=Environment,ParameterValue=${{ matrix.environment }} || {
+            echo "Stack creation failed"
+            exit 1
+          }
+          
+          echo "Waiting for stack creation to complete..."
+          aws cloudformation wait stack-create-complete --stack-name $STACK_NAME || {
+            echo "Stack creation failed. Checking stack events..."
+            aws cloudformation describe-stack-events --stack-name $STACK_NAME --max-items 10
+            exit 1
+          }
+          
+        elif [ "$STACK_STATUS" != "STACK_NOT_FOUND" ]; then
+          echo "Stack exists with status: $STACK_STATUS, attempting update..."
           
           # スタック更新を実行
           UPDATE_OUTPUT=$(aws cloudformation update-stack \
@@ -133,7 +165,7 @@ jobs:
             }
           fi
         else
-          echo "Stack does not exist, creating..."
+          echo "Stack does not exist, creating new stack..."
           
           # スタック作成を実行
           aws cloudformation create-stack \
