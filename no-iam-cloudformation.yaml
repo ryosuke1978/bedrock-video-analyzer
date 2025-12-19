@@ -289,7 +289,7 @@ Resources:
       FunctionName: !Ref UploadFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub '${ApiGateway}/*/POST/upload'
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/*'
 
   LimitsLambdaPermission:
     Type: AWS::Lambda::Permission
@@ -297,7 +297,7 @@ Resources:
       FunctionName: !Ref LimitsFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub '${ApiGateway}/*/GET/limits'
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/*'
 
   # API Gateway Deployment
   ApiDeployment:
