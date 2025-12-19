@@ -1,0 +1,337 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Bedrock Video Analyzer - No IAM Creation Required'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: 'dev'
+    Description: 'Environment name'
+  
+  LambdaExecutionRoleArn:
+    Type: String
+    Description: 'ARN of pre-created Lambda execution role with required permissions'
+    Default: 'arn:aws:iam::252689085095:role/BedrockVideoAnalyzer-Lambda-Role'
+
+Resources:
+  # S3 Bucket for video storage
+  VideoBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'bedrock-video-analyzer-${Environment}-${AWS::AccountId}'
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders:
+              - '*'
+            AllowedMethods:
+              - GET
+              - PUT
+              - POST
+              - DELETE
+              - HEAD
+            AllowedOrigins:
+              - '*'
+            MaxAge: 3000
+
+  # DynamoDB Table for video analysis data
+  VideoAnalysisTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'VideoAnalysis-${Environment}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: videoId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: videoId
+          KeyType: HASH
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: BedrockVideoAnalyzer
+
+  # DynamoDB Table for query history
+  QueryHistoryTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'QueryHistory-${Environment}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: videoId
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: S
+      KeySchema:
+        - AttributeName: videoId
+          KeyType: HASH
+        - AttributeName: timestamp
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: BedrockVideoAnalyzer
+
+  # Upload Lambda Function
+  UploadFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'bedrock-video-analyzer-upload-${Environment}'
+      Runtime: nodejs18.x
+      Handler: index.handler
+      Role: !Ref LambdaExecutionRoleArn
+      Code:
+        ZipFile: |
+          exports.handler = async (event) => {
+            console.log('Upload function called:', JSON.stringify(event, null, 2));
+            
+            // CORS headers
+            const headers = {
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key',
+              'Access-Control-Allow-Methods': 'POST,OPTIONS'
+            };
+            
+            // Handle OPTIONS request
+            if (event.httpMethod === 'OPTIONS') {
+              return {
+                statusCode: 200,
+                headers,
+                body: ''
+              };
+            }
+            
+            // Simple response for now
+            return {
+              statusCode: 200,
+              headers,
+              body: JSON.stringify({
+                message: 'Upload function is working! (Placeholder)',
+                timestamp: new Date().toISOString(),
+                videoId: 'test-' + Date.now(),
+                presignedUrl: 'https://example.com/placeholder-url'
+              })
+            };
+          };
+      Environment:
+        Variables:
+          REGION: !Ref AWS::Region
+          VIDEO_BUCKET_NAME: !Ref VideoBucket
+          VIDEO_ANALYSIS_TABLE_NAME: !Ref VideoAnalysisTable
+          NODE_ENV: development
+          ENABLE_MOCK: 'true'
+      Timeout: 30
+      MemorySize: 256
+
+  # Limits Lambda Function
+  LimitsFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'bedrock-video-analyzer-limits-${Environment}'
+      Runtime: nodejs18.x
+      Handler: index.handler
+      Role: !Ref LambdaExecutionRoleArn
+      Code:
+        ZipFile: |
+          exports.handler = async (event) => {
+            console.log('Limits function called:', JSON.stringify(event, null, 2));
+            
+            // CORS headers
+            const headers = {
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key',
+              'Access-Control-Allow-Methods': 'GET,OPTIONS'
+            };
+            
+            // Handle OPTIONS request
+            if (event.httpMethod === 'OPTIONS') {
+              return {
+                statusCode: 200,
+                headers,
+                body: ''
+              };
+            }
+            
+            const limits = {
+              videoFormats: ['mp4', 'mov', 'avi', 'mkv', 'webm'],
+              maxFileSize: '100MB',
+              maxDuration: '1 hour',
+              supportedRegions: ['ap-northeast-1'],
+              lastUpdated: new Date().toISOString()
+            };
+            
+            return {
+              statusCode: 200,
+              headers,
+              body: JSON.stringify(limits)
+            };
+          };
+      Environment:
+        Variables:
+          REGION: !Ref AWS::Region
+          MAX_FILE_SIZE_BYTES: '104857600'
+          MAX_DURATION_SECONDS: '3600'
+      Timeout: 30
+      MemorySize: 256
+
+  # API Gateway
+  ApiGateway:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Sub 'bedrock-video-analyzer-api-${Environment}'
+      Description: 'Bedrock Video Analyzer API'
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+
+  # Upload Resource
+  UploadResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !GetAtt ApiGateway.RootResourceId
+      PathPart: upload
+
+  UploadMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref UploadResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${UploadFunction.Arn}/invocations'
+
+  UploadOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref UploadResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key'"
+              method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+
+  # Limits Resource
+  LimitsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !GetAtt ApiGateway.RootResourceId
+      PathPart: limits
+
+  LimitsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref LimitsResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LimitsFunction.Arn}/invocations'
+
+  LimitsOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref LimitsResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+
+  # Lambda Permissions
+  UploadLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref UploadFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub '${ApiGateway}/*/POST/upload'
+
+  LimitsLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref LimitsFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub '${ApiGateway}/*/GET/limits'
+
+  # API Gateway Deployment
+  ApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - UploadMethod
+      - UploadOptionsMethod
+      - LimitsMethod
+      - LimitsOptionsMethod
+    Properties:
+      RestApiId: !Ref ApiGateway
+      StageName: !Ref Environment
+
+Outputs:
+  ApiGatewayUrl:
+    Description: 'API Gateway URL'
+    Value: !Sub 'https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/${Environment}'
+    Export:
+      Name: !Sub '${AWS::StackName}-ApiUrl'
+
+  VideoBucketName:
+    Description: 'S3 Bucket for video storage'
+    Value: !Ref VideoBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-VideoBucket'
+
+  VideoAnalysisTableName:
+    Description: 'DynamoDB table for video analysis'
+    Value: !Ref VideoAnalysisTable
+    Export:
+      Name: !Sub '${AWS::StackName}-VideoAnalysisTable'
+
+  RequiredIAMRoleArn:
+    Description: 'Required IAM Role ARN (must be created manually)'
+    Value: !Ref LambdaExecutionRoleArn
+    Export:
+      Name: !Sub '${AWS::StackName}-LambdaRole'

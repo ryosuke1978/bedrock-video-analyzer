@@ -96,7 +96,7 @@ jobs:
     - name: Validate CloudFormation template
       run: |
         aws cloudformation validate-template \
-          --template-body file://fixed-cloudformation.yaml
+          --template-body file://no-iam-cloudformation.yaml
           
     - name: Deploy CloudFormation stack
       run: |
@@ -122,8 +122,7 @@ jobs:
           echo "Creating new stack..."
           aws cloudformation create-stack \
             --stack-name $STACK_NAME \
-            --template-body file://fixed-cloudformation.yaml \
-            --capabilities CAPABILITY_NAMED_IAM \
+            --template-body file://no-iam-cloudformation.yaml \
             --parameters ParameterKey=Environment,ParameterValue=${{ matrix.environment }} || {
             echo "Stack creation failed"
             exit 1
@@ -142,8 +141,7 @@ jobs:
           # スタック更新を実行
           UPDATE_OUTPUT=$(aws cloudformation update-stack \
             --stack-name $STACK_NAME \
-            --template-body file://fixed-cloudformation.yaml \
-            --capabilities CAPABILITY_NAMED_IAM \
+            --template-body file://no-iam-cloudformation.yaml \
             --parameters ParameterKey=Environment,ParameterValue=${{ matrix.environment }} 2>&1) || {
             
             # 更新が不要な場合のエラーをチェック
@@ -170,8 +168,7 @@ jobs:
           # スタック作成を実行
           aws cloudformation create-stack \
             --stack-name $STACK_NAME \
-            --template-body file://fixed-cloudformation.yaml \
-            --capabilities CAPABILITY_NAMED_IAM \
+            --template-body file://no-iam-cloudformation.yaml \
             --parameters ParameterKey=Environment,ParameterValue=${{ matrix.environment }} || {
             echo "Stack creation failed"
             exit 1
