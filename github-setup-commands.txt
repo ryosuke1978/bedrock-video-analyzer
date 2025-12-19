@@ -1,0 +1,16 @@
+# GitHubリポジトリ設定コマンド
+# 以下のコマンドをPowerShellで順次実行してください
+
+# 1. リモートリポジトリを追加（your-usernameを実際のユーザー名に変更）
+git remote add origin https://github.com/your-username/bedrock-video-analyzer.git
+
+# 2. GitHubにプッシュ
+git push -u origin main
+
+# 3. 開発ブランチを作成（オプション）
+git checkout -b develop
+git push -u origin develop
+git checkout main
+
+# 完了後、以下のURLでリポジトリを確認
+# https://github.com/your-username/bedrock-video-analyzer

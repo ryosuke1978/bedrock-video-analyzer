@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bedrock Video Analyzer - 動画解析デモ</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎬 Bedrock Video Analyzer</h1>
+            <p>Amazon Bedrock TwelveLabs Pegasus 1.2を使用した動画解析デモ</p>
+        </header>
+
+        <main>
+            <!-- アップロード画面 -->
+            <section id="upload-section" class="section active">
+                <h2>動画ファイルのアップロード</h2>
+                
+                <div class="upload-area" id="upload-area">
+                    <div class="upload-content">
+                        <div class="upload-icon">📁</div>
+                        <p>動画ファイルをドラッグ&ドロップするか、クリックして選択してください</p>
+                        <input type="file" id="file-input" accept=".mp4,.mov,.avi,.mkv,.webm,.mxf,.flv,.wmv,.m4v" hidden>
+                        <button id="select-file-btn" class="btn btn-primary">ファイルを選択</button>
+                    </div>
+                </div>
+
+                <div class="file-info" id="file-info" style="display: none;">
+                    <h3>選択されたファイル</h3>
+                    <div class="file-details">
+                        <p><strong>ファイル名:</strong> <span id="file-name"></span></p>
+                        <p><strong>ファイルサイズ:</strong> <span id="file-size"></span></p>
+                        <p><strong>形式:</strong> <span id="file-format"></span></p>
+                    </div>
+                    <button id="upload-btn" class="btn btn-success">アップロード開始</button>
+                </div>
+
+                <div class="upload-progress" id="upload-progress" style="display: none;">
+                    <h3>アップロード中...</h3>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="upload-progress-fill"></div>
+                    </div>
+                    <p id="upload-status">準備中...</p>
+                </div>
+
+                <div class="limitations" id="limitations">
+                    <div class="limitations-header">
+                        <h3>📋 制限事項</h3>
+                        <button id="showLimitsButton" class="btn btn-info btn-small">詳細を表示</button>
+                    </div>
+                    <div class="limitations-content">
+                        <div class="limitation-item">
+                            <span class="limitation-label">対応形式:</span>
+                            <span class="limitation-value">MP4, MOV, AVI, MKV, WEBM, MXF, FLV, WMV, M4V</span>
+                        </div>
+                        <div class="limitation-item">
+                            <span class="limitation-label">最大ファイルサイズ:</span>
+                            <span class="limitation-value">5GB</span>
+                        </div>
+                        <div class="limitation-item">
+                            <span class="limitation-label">最大動画長:</span>
+                            <span class="limitation-value">2時間</span>
+                        </div>
+                        <div class="limitation-item">
+                            <span class="limitation-label">解像度制限:</span>
+                            <span class="limitation-value">4K (3840x2160)まで</span>
+                        </div>
+                        <div class="limitation-item">
+                            <span class="limitation-label">概算コスト:</span>
+                            <span class="limitation-value">1回の解析あたり約$0.52-1.50</span>
+                        </div>
+                    </div>
+                    <div class="limitations-note">
+                        <small>※ 制限事項は予告なく変更される場合があります。<button id="showLimitsButton2" class="link-button">詳細な制限情報を確認</button></small>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 進行状況画面 -->
+            <section id="progress-section" class="section">
+                <h2>解析進行状況</h2>
+                
+                <div class="analysis-progress">
+                    <div class="progress-circle">
+                        <div class="progress-text" id="progress-percentage">0%</div>
+                    </div>
+                    
+                    <div class="progress-details">
+                        <h3>実行中の機能</h3>
+                        <ul id="active-functions">
+                            <li class="function-item">
+                                <span class="function-name">基本解析</span>
+                                <span class="function-status" id="basic-analysis-status">待機中</span>
+                            </li>
+                            <li class="function-item">
+                                <span class="function-name">PR文章生成</span>
+                                <span class="function-status" id="pr-generation-status">待機中</span>
+                            </li>
+                            <li class="function-item">
+                                <span class="function-name">あらすじ生成</span>
+                                <span class="function-status" id="summary-generation-status">待機中</span>
+                            </li>
+                        </ul>
+                        
+                        <div class="time-info">
+                            <p><strong>推定残り時間:</strong> <span id="estimated-time">計算中...</span></p>
+                        </div>
+                        
+                        <button id="cancel-btn" class="btn btn-danger">解析をキャンセル</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 結果表示画面 -->
+            <section id="results-section" class="section">
+                <h2>解析結果</h2>
+                
+                <div class="results-container">
+                    <!-- 基本解析結果 -->
+                    <div class="result-category">
+                        <h3>📊 基本解析</h3>
+                        <div class="result-content" id="basic-analysis-result">
+                            <!-- 動的に生成 -->
+                        </div>
+                    </div>
+
+                    <!-- PR文章 -->
+                    <div class="result-category">
+                        <h3>📝 PR文章</h3>
+                        <div class="text-results">
+                            <div class="text-item">
+                                <h4>200文字版</h4>
+                                <div class="text-content" id="pr-short">
+                                    <!-- 動的に生成 -->
+                                </div>
+                                <button class="copy-btn" data-target="pr-short">📋 コピー</button>
+                            </div>
+                            <div class="text-item">
+                                <h4>500文字版</h4>
+                                <div class="text-content" id="pr-long">
+                                    <!-- 動的に生成 -->
+                                </div>
+                                <button class="copy-btn" data-target="pr-long">📋 コピー</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- あらすじ -->
+                    <div class="result-category">
+                        <h3>📖 あらすじ</h3>
+                        <div class="text-results">
+                            <div class="text-item">
+                                <h4>200文字版</h4>
+                                <div class="text-content" id="summary-short">
+                                    <!-- 動的に生成 -->
+                                </div>
+                                <button class="copy-btn" data-target="summary-short">📋 コピー</button>
+                            </div>
+                            <div class="text-item">
+                                <h4>500文字版</h4>
+                                <div class="text-content" id="summary-long">
+                                    <!-- 動的に生成 -->
+                                </div>
+                                <button class="copy-btn" data-target="summary-long">📋 コピー</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="result-actions">
+                    <button id="export-json-btn" class="btn btn-secondary">📄 JSON形式でエクスポート</button>
+                    <button id="new-analysis-btn" class="btn btn-primary">🔄 新しい動画を解析</button>
+                    <button id="show-query-btn" class="btn btn-info">💬 詳細な問い合わせ</button>
+                </div>
+            </section>
+
+            <!-- 問い合わせ画面 -->
+            <section id="query-section" class="section">
+                <h2>詳細な問い合わせ</h2>
+                
+                <div class="query-container">
+                    <div class="query-examples">
+                        <h3>💡 質問例</h3>
+                        <div class="example-questions">
+                            <div class="example-category">
+                                <h4>📝 内容分析</h4>
+                                <button class="example-btn" data-question="動画の内容を詳しく教えてください">動画の内容を詳しく教えてください</button>
+                                <button class="example-btn" data-question="動画をシーンごとに分けて内容をまとめてください">シーンごとの内容まとめ</button>
+                                <button class="example-btn" data-question="動画の主要なテーマは何ですか？">主要なテーマは何ですか？</button>
+                            </div>
+                            <div class="example-category">
+                                <h4>🎬 映像分析</h4>
+                                <button class="example-btn" data-question="動画に登場する人物について教えてください">登場人物について教えてください</button>
+                                <button class="example-btn" data-question="動画の撮影場所や背景について説明してください">撮影場所や背景について</button>
+                                <button class="example-btn" data-question="動画で使用されている音楽や効果音について教えてください">音楽や効果音について</button>
+                            </div>
+                            <div class="example-category">
+                                <h4>⏰ 時間指定</h4>
+                                <button class="example-btn" data-question="動画の最初の1分間で何が起こりますか？">最初の1分間で何が起こりますか？</button>
+                                <button class="example-btn" data-question="動画の中盤（3-5分）の内容を教えてください">中盤（3-5分）の内容を教えてください</button>
+                                <button class="example-btn" data-question="動画の終わり方について説明してください">動画の終わり方について</button>
+                            </div>
+                            <div class="example-category">
+                                <h4>🔍 詳細分析</h4>
+                                <button class="example-btn" data-question="動画で最も印象的なシーンはどこですか？">最も印象的なシーンはどこですか？</button>
+                                <button class="example-btn" data-question="動画の感情的なトーンを分析してください">感情的なトーンを分析してください</button>
+                                <button class="example-btn" data-question="動画から学べることや教訓は何ですか？">学べることや教訓は何ですか？</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="query-input">
+                        <div class="input-header">
+                            <h3>🤔 自然言語で質問してください</h3>
+                            <div class="input-tips">
+                                <span class="tip">💡 ヒント: 具体的な時間帯や詳細な内容について質問できます</span>
+                            </div>
+                        </div>
+                        <div class="input-container">
+                            <textarea id="question-input" placeholder="例: 動画の2分30秒あたりで何が起こっていますか？" rows="4"></textarea>
+                            <div class="input-actions">
+                                <button id="clear-input-btn" class="btn btn-secondary btn-small">クリア</button>
+                                <button id="submit-question-btn" class="btn btn-primary">
+                                    <span class="btn-icon">🚀</span>
+                                    質問を送信
+                                </button>
+                            </div>
+                        </div>
+                        <div class="input-counter">
+                            <span id="char-counter">0</span> / 500文字
+                        </div>
+                    </div>
+
+                    <div class="query-history" id="query-history">
+                        <!-- 質問履歴が動的に追加される -->
+                    </div>
+                </div>
+
+                <div class="query-actions">
+                    <button id="back-to-results-btn" class="btn btn-secondary">← 結果画面に戻る</button>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>&copy; 2024 Bedrock Video Analyzer Demo</p>
+        </footer>
+    </div>
+
+    <script src="i18n.js"></script>
+    <script src="results-display.js"></script>
+    <script src="limits-display.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

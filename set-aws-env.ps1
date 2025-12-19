@@ -1,0 +1,8 @@
+# AWS環墁E��数設宁E
+$env:AWS_ACCESS_KEY_ID = "YOUR_AWS_ACCESS_KEY_ID"
+$env:AWS_SECRET_ACCESS_KEY = "YOUR_AWS_SECRET_ACCESS_KEY"
+$env:AWS_DEFAULT_REGION = "ap-northeast-1"
+
+Write-Host "AWS環墁E��数を設定しました" -ForegroundColor Green
+Write-Host "AWS_ACCESS_KEY_ID: $env:AWS_ACCESS_KEY_ID"
+Write-Host "AWS_DEFAULT_REGION: $env:AWS_DEFAULT_REGION"

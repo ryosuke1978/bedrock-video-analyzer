@@ -1,0 +1,386 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Bedrock Video Analyzer - Development Environment'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: 'dev'
+    Description: 'Environment name'
+  
+  MaxFileSize:
+    Type: Number
+    Default: 1073741824
+    Description: 'Maximum file size in bytes (1GB for dev)'
+  
+  MaxDuration:
+    Type: Number
+    Default: 3600
+    Description: 'Maximum video duration in seconds (1 hour for dev)'
+
+Resources:
+  # S3 Bucket for video storage
+  VideoBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'bedrock-video-analyzer-${Environment}-${AWS::AccountId}'
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders:
+              - '*'
+            AllowedMethods:
+              - GET
+              - PUT
+              - POST
+              - DELETE
+              - HEAD
+            AllowedOrigins:
+              - '*'
+            MaxAge: 3000
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteIncompleteMultipartUploads
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 1
+          - Id: DeleteTempFiles
+            Status: Enabled
+            ExpirationInDays: 7
+            Prefix: 'temp/'
+
+  # DynamoDB Table for video analysis data
+  VideoAnalysisTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'VideoAnalysis-${Environment}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: videoId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: videoId
+          KeyType: HASH
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: BedrockVideoAnalyzer
+
+  # DynamoDB Table for query history
+  QueryHistoryTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'QueryHistory-${Environment}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: videoId
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: S
+      KeySchema:
+        - AttributeName: videoId
+          KeyType: HASH
+        - AttributeName: timestamp
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: BedrockVideoAnalyzer
+
+  # IAM Role for Lambda functions
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'BedrockVideoAnalyzer-Lambda-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: BedrockVideoAnalyzerPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:GetObjectVersion
+                Resource: !Sub '${VideoBucket}/*'
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                Resource: !Ref VideoBucket
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                Resource:
+                  - !GetAtt VideoAnalysisTable.Arn
+                  - !GetAtt QueryHistoryTable.Arn
+              - Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                Resource: !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/twelvelabs.pegasus-1-2'
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*'
+
+  # Lambda Layer for common dependencies
+  CommonLayer:
+    Type: AWS::Lambda::LayerVersion
+    Properties:
+      LayerName: !Sub 'bedrock-video-analyzer-common-${Environment}'
+      Description: 'Common dependencies for Bedrock Video Analyzer'
+      Content:
+        S3Bucket: !Ref VideoBucket
+        S3Key: 'layers/common-layer.zip'
+      CompatibleRuntimes:
+        - nodejs18.x
+      CompatibleArchitectures:
+        - x86_64
+
+  # Upload Lambda Function
+  UploadFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'bedrock-video-analyzer-upload-${Environment}'
+      Runtime: nodejs18.x
+      Handler: upload.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref VideoBucket
+        S3Key: 'lambda/upload.zip'
+      Environment:
+        Variables:
+          REGION: !Ref AWS::Region
+          VIDEO_BUCKET_NAME: !Ref VideoBucket
+          VIDEO_ANALYSIS_TABLE_NAME: !Ref VideoAnalysisTable
+          MAX_FILE_SIZE_BYTES: !Ref MaxFileSize
+          MAX_DURATION_SECONDS: !Ref MaxDuration
+          NODE_ENV: development
+          ENABLE_MOCK: 'true'
+      Timeout: 30
+      MemorySize: 256
+      Layers:
+        - !Ref CommonLayer
+
+  # Analysis Lambda Function
+  AnalysisFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'bedrock-video-analyzer-analysis-${Environment}'
+      Runtime: nodejs18.x
+      Handler: analysis.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref VideoBucket
+        S3Key: 'lambda/analysis.zip'
+      Environment:
+        Variables:
+          REGION: !Ref AWS::Region
+          VIDEO_BUCKET_NAME: !Ref VideoBucket
+          VIDEO_ANALYSIS_TABLE_NAME: !Ref VideoAnalysisTable
+          PEGASUS_MODEL_ID: 'twelvelabs.pegasus-1-2'
+          PEGASUS_MODEL_VERSION: '1.0'
+          NODE_ENV: development
+          ENABLE_MOCK: 'true'
+      Timeout: 900
+      MemorySize: 1024
+      Layers:
+        - !Ref CommonLayer
+
+  # Status Lambda Function
+  StatusFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'bedrock-video-analyzer-status-${Environment}'
+      Runtime: nodejs18.x
+      Handler: status.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref VideoBucket
+        S3Key: 'lambda/status.zip'
+      Environment:
+        Variables:
+          REGION: !Ref AWS::Region
+          VIDEO_ANALYSIS_TABLE_NAME: !Ref VideoAnalysisTable
+      Timeout: 30
+      MemorySize: 256
+      Layers:
+        - !Ref CommonLayer
+
+  # Query Lambda Function
+  QueryFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'bedrock-video-analyzer-query-${Environment}'
+      Runtime: nodejs18.x
+      Handler: query.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref VideoBucket
+        S3Key: 'lambda/query.zip'
+      Environment:
+        Variables:
+          REGION: !Ref AWS::Region
+          VIDEO_ANALYSIS_TABLE_NAME: !Ref VideoAnalysisTable
+          QUERY_HISTORY_TABLE_NAME: !Ref QueryHistoryTable
+          PEGASUS_MODEL_ID: 'twelvelabs.pegasus-1-2'
+      Timeout: 300
+      MemorySize: 512
+      Layers:
+        - !Ref CommonLayer
+
+  # Limits Lambda Function
+  LimitsFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'bedrock-video-analyzer-limits-${Environment}'
+      Runtime: nodejs18.x
+      Handler: limits.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref VideoBucket
+        S3Key: 'lambda/limits.zip'
+      Environment:
+        Variables:
+          REGION: !Ref AWS::Region
+          MAX_FILE_SIZE_BYTES: !Ref MaxFileSize
+          MAX_DURATION_SECONDS: !Ref MaxDuration
+      Timeout: 30
+      MemorySize: 256
+      Layers:
+        - !Ref CommonLayer
+
+  # API Gateway
+  ApiGateway:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Sub 'bedrock-video-analyzer-api-${Environment}'
+      Description: 'Bedrock Video Analyzer API'
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+      Policy:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: '*'
+            Action: execute-api:Invoke
+            Resource: '*'
+
+  # API Gateway Resources and Methods
+  UploadResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !GetAtt ApiGateway.RootResourceId
+      PathPart: upload
+
+  UploadMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref UploadResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${UploadFunction.Arn}/invocations'
+
+  UploadOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref UploadResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+
+  # Lambda Permissions
+  UploadLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref UploadFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub '${ApiGateway}/*/POST/upload'
+
+  # API Gateway Deployment
+  ApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - UploadMethod
+      - UploadOptionsMethod
+    Properties:
+      RestApiId: !Ref ApiGateway
+      StageName: !Ref Environment
+
+Outputs:
+  ApiGatewayUrl:
+    Description: 'API Gateway URL'
+    Value: !Sub 'https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/${Environment}'
+    Export:
+      Name: !Sub '${AWS::StackName}-ApiUrl'
+
+  VideoBucketName:
+    Description: 'S3 Bucket for video storage'
+    Value: !Ref VideoBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-VideoBucket'
+
+  VideoAnalysisTableName:
+    Description: 'DynamoDB table for video analysis'
+    Value: !Ref VideoAnalysisTable
+    Export:
+      Name: !Sub '${AWS::StackName}-VideoAnalysisTable'
+
+  LambdaExecutionRoleArn:
+    Description: 'Lambda execution role ARN'
+    Value: !GetAtt LambdaExecutionRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-LambdaRole'

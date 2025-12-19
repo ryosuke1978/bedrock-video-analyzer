@@ -1,0 +1,135 @@
+version: 0.2
+
+env:
+  variables:
+    NODE_ENV: production
+  parameter-store:
+    # AWS Systems Manager Parameter Storeから環境変数を取得（オプション）
+    # BEDROCK_API_KEY: /bedrock-video-analyzer/api-key
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 18
+    commands:
+      - echo "Installing dependencies..."
+      - npm install
+      - cd lambda && npm install && cd ..
+      
+  pre_build:
+    commands:
+      - echo "Pre-build phase started on $(date)"
+      - echo "Running linting and tests..."
+      - npm run lint || echo "Linting warnings found"
+      - npm test
+      - cd lambda && npm test && cd ..
+      
+  build:
+    commands:
+      - echo "Build phase started on $(date)"
+      - echo "Building Lambda functions..."
+      - cd lambda && npm run build && cd ..
+      - echo "Validating CloudFormation template..."
+      - aws cloudformation validate-template --template-body file://fixed-cloudformation.yaml
+      
+  post_build:
+    commands:
+      - echo "Post-build phase started on $(date)"
+      - echo "Deploying CloudFormation stack..."
+      - |
+        # 環境に応じたスタック名を設定
+        if [ "$CODEBUILD_WEBHOOK_HEAD_REF" = "refs/heads/main" ]; then
+          ENVIRONMENT="prod"
+        elif [ "$CODEBUILD_WEBHOOK_HEAD_REF" = "refs/heads/staging" ]; then
+          ENVIRONMENT="staging"
+        else
+          ENVIRONMENT="dev"
+        fi
+        
+        STACK_NAME="bedrock-video-analyzer-$ENVIRONMENT"
+        echo "Deploying to environment: $ENVIRONMENT"
+        echo "Stack name: $STACK_NAME"
+        
+        # スタックの存在確認とデプロイ
+        if aws cloudformation describe-stacks --stack-name $STACK_NAME 2>/dev/null; then
+          echo "Stack exists, updating..."
+          aws cloudformation update-stack \
+            --stack-name $STACK_NAME \
+            --template-body file://fixed-cloudformation.yaml \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --parameters ParameterKey=Environment,ParameterValue=$ENVIRONMENT
+          
+          echo "Waiting for stack update to complete..."
+          aws cloudformation wait stack-update-complete --stack-name $STACK_NAME
+          
+          if [ $? -eq 0 ]; then
+            echo "Stack update completed successfully"
+          else
+            echo "Stack update failed or timed out"
+            exit 1
+          fi
+        else
+          echo "Stack does not exist, creating..."
+          aws cloudformation create-stack \
+            --stack-name $STACK_NAME \
+            --template-body file://fixed-cloudformation.yaml \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --parameters ParameterKey=Environment,ParameterValue=$ENVIRONMENT
+          
+          echo "Waiting for stack creation to complete..."
+          aws cloudformation wait stack-create-complete --stack-name $STACK_NAME
+          
+          if [ $? -eq 0 ]; then
+            echo "Stack creation completed successfully"
+          else
+            echo "Stack creation failed or timed out"
+            exit 1
+          fi
+        fi
+        
+        # スタック出力を取得
+        echo "Getting stack outputs..."
+        API_URL=$(aws cloudformation describe-stacks \
+          --stack-name $STACK_NAME \
+          --query "Stacks[0].Outputs[?OutputKey=='ApiGatewayUrl'].OutputValue" \
+          --output text)
+        
+        BUCKET_NAME=$(aws cloudformation describe-stacks \
+          --stack-name $STACK_NAME \
+          --query "Stacks[0].Outputs[?OutputKey=='VideoBucketName'].OutputValue" \
+          --output text)
+        
+        echo "Deployment completed successfully!"
+        echo "Environment: $ENVIRONMENT"
+        echo "API Gateway URL: $API_URL"
+        echo "S3 Bucket: $BUCKET_NAME"
+        
+        # APIテスト
+        echo "Testing deployed APIs..."
+        if curl -f "$API_URL/limits"; then
+          echo "Limits API test passed"
+        else
+          echo "Limits API test failed"
+          exit 1
+        fi
+        
+        if curl -f -X POST "$API_URL/upload" \
+          -H "Content-Type: application/json" \
+          -d '{"fileName":"test.mp4","fileSize":1000000}'; then
+          echo "Upload API test passed"
+        else
+          echo "Upload API test failed"
+          exit 1
+        fi
+        
+        echo "All API tests passed!"
+
+artifacts:
+  files:
+    - '**/*'
+  name: bedrock-video-analyzer-$(date +%Y-%m-%d-%H-%M-%S)
+
+cache:
+  paths:
+    - node_modules/**/*
+    - lambda/node_modules/**/*
