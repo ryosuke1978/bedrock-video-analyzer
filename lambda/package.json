@@ -1,27 +1,51 @@
 {
-  "name": "video-analyzer-lambda",
+  "name": "bedrock-video-analyzer-lambda",
   "version": "1.0.0",
-  "description": "Lambda functions for Bedrock Video Analyzer",
+  "description": "AWS Lambda functions for Bedrock Video Analyzer",
   "main": "index.js",
   "scripts": {
-    "build": "tsc",
-    "watch": "tsc -w",
+    "build": "npm run clean && npm run compile",
+    "clean": "rm -rf dist && mkdir -p dist",
+    "compile": "cp -r src/* dist/",
     "test": "jest",
-    "clean": "rm -rf dist"
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "lint": "eslint src/**/*.js",
+    "lint:fix": "eslint src/**/*.js --fix"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.400.0",
-    "@aws-sdk/client-dynamodb": "^3.400.0",
-    "@aws-sdk/lib-dynamodb": "^3.400.0",
-    "@aws-sdk/client-bedrock-runtime": "^3.400.0",
-    "@aws-sdk/client-cloudwatch": "^3.400.0",
-    "@aws-sdk/s3-request-presigner": "^3.400.0",
-    "uuid": "^9.0.0"
+    "aws-sdk": "^2.1490.0",
+    "uuid": "^9.0.1"
   },
   "devDependencies": {
-    "@types/aws-lambda": "^8.10.119",
-    "@types/node": "^18.14.6",
-    "@types/uuid": "^9.0.2",
-    "typescript": "^4.9.5"
+    "jest": "^29.7.0",
+    "eslint": "^8.55.0",
+    "@types/aws-lambda": "^8.10.130"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "collectCoverageFrom": [
+      "src/**/*.js",
+      "!src/**/*.test.js"
+    ],
+    "coverageDirectory": "coverage",
+    "coverageReporters": [
+      "text",
+      "lcov",
+      "html"
+    ]
+  },
+  "keywords": [
+    "aws",
+    "lambda",
+    "bedrock",
+    "video-analysis",
+    "ai",
+    "serverless"
+  ],
+  "author": "Bedrock Video Analyzer Team",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
   }
 }

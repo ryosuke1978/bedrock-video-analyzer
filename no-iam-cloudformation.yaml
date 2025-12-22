@@ -88,38 +88,22 @@ Resources:
     Properties:
       FunctionName: !Sub 'bedrock-video-analyzer-upload-${Environment}'
       Runtime: nodejs18.x
-      Handler: index.handler
+      Handler: upload.handler
       Role: !Ref LambdaExecutionRoleArn
       Code:
         ZipFile: |
+          // Placeholder - will be replaced by CI/CD
           exports.handler = async (event) => {
-            console.log('Upload function called:', JSON.stringify(event, null, 2));
-            
-            // CORS headers
-            const headers = {
-              'Access-Control-Allow-Origin': '*',
-              'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key',
-              'Access-Control-Allow-Methods': 'POST,OPTIONS'
-            };
-            
-            // Handle OPTIONS request
-            if (event.httpMethod === 'OPTIONS') {
-              return {
-                statusCode: 200,
-                headers,
-                body: ''
-              };
-            }
-            
-            // Simple response for now
             return {
               statusCode: 200,
-              headers,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key',
+                'Access-Control-Allow-Methods': 'POST,OPTIONS'
+              },
               body: JSON.stringify({
-                message: 'Upload function is working! (Placeholder)',
-                timestamp: new Date().toISOString(),
-                videoId: 'test-' + Date.now(),
-                presignedUrl: 'https://example.com/placeholder-url'
+                message: 'Upload function placeholder',
+                timestamp: new Date().toISOString()
               })
             };
           };
@@ -128,8 +112,112 @@ Resources:
           REGION: !Ref AWS::Region
           VIDEO_BUCKET_NAME: !Ref VideoBucket
           VIDEO_ANALYSIS_TABLE_NAME: !Ref VideoAnalysisTable
-          NODE_ENV: development
+          NODE_ENV: production
+          ENABLE_MOCK: 'false'
+      Timeout: 300
+      MemorySize: 512
+
+  # Analysis Lambda Function
+  AnalysisFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'bedrock-video-analyzer-analysis-${Environment}'
+      Runtime: nodejs18.x
+      Handler: analysis.handler
+      Role: !Ref LambdaExecutionRoleArn
+      Code:
+        ZipFile: |
+          // Placeholder - will be replaced by CI/CD
+          exports.handler = async (event) => {
+            return {
+              statusCode: 200,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key',
+                'Access-Control-Allow-Methods': 'POST,OPTIONS'
+              },
+              body: JSON.stringify({
+                message: 'Analysis function placeholder',
+                timestamp: new Date().toISOString()
+              })
+            };
+          };
+      Environment:
+        Variables:
+          REGION: !Ref AWS::Region
+          VIDEO_BUCKET_NAME: !Ref VideoBucket
+          VIDEO_ANALYSIS_TABLE_NAME: !Ref VideoAnalysisTable
+          PEGASUS_MODEL_ID: 'twelvelabs.pegasus-1-2'
+          NODE_ENV: production
           ENABLE_MOCK: 'true'
+      Timeout: 900
+      MemorySize: 1024
+
+  # Query Lambda Function
+  QueryFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'bedrock-video-analyzer-query-${Environment}'
+      Runtime: nodejs18.x
+      Handler: query.handler
+      Role: !Ref LambdaExecutionRoleArn
+      Code:
+        ZipFile: |
+          // Placeholder - will be replaced by CI/CD
+          exports.handler = async (event) => {
+            return {
+              statusCode: 200,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key',
+                'Access-Control-Allow-Methods': 'POST,OPTIONS'
+              },
+              body: JSON.stringify({
+                message: 'Query function placeholder',
+                timestamp: new Date().toISOString()
+              })
+            };
+          };
+      Environment:
+        Variables:
+          REGION: !Ref AWS::Region
+          VIDEO_ANALYSIS_TABLE_NAME: !Ref VideoAnalysisTable
+          QUERY_HISTORY_TABLE_NAME: !Ref QueryHistoryTable
+          PEGASUS_MODEL_ID: 'twelvelabs.pegasus-1-2'
+          NODE_ENV: production
+          ENABLE_MOCK: 'true'
+      Timeout: 300
+      MemorySize: 512
+
+  # Status Lambda Function
+  StatusFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'bedrock-video-analyzer-status-${Environment}'
+      Runtime: nodejs18.x
+      Handler: status.handler
+      Role: !Ref LambdaExecutionRoleArn
+      Code:
+        ZipFile: |
+          // Placeholder - will be replaced by CI/CD
+          exports.handler = async (event) => {
+            return {
+              statusCode: 200,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key',
+                'Access-Control-Allow-Methods': 'GET,OPTIONS'
+              },
+              body: JSON.stringify({
+                message: 'Status function placeholder',
+                timestamp: new Date().toISOString()
+              })
+            };
+          };
+      Environment:
+        Variables:
+          REGION: !Ref AWS::Region
+          VIDEO_ANALYSIS_TABLE_NAME: !Ref VideoAnalysisTable
       Timeout: 30
       MemorySize: 256
 
@@ -139,7 +227,7 @@ Resources:
     Properties:
       FunctionName: !Sub 'bedrock-video-analyzer-limits-${Environment}'
       Runtime: nodejs18.x
-      Handler: index.handler
+      Handler: limits.handler
       Role: !Ref LambdaExecutionRoleArn
       Code:
         ZipFile: |
@@ -238,6 +326,138 @@ Resources:
             method.response.header.Access-Control-Allow-Methods: true
             method.response.header.Access-Control-Allow-Origin: true
 
+  # Analysis Resource
+  AnalysisResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !GetAtt ApiGateway.RootResourceId
+      PathPart: analysis
+
+  AnalysisMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref AnalysisResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AnalysisFunction.Arn}/invocations'
+
+  AnalysisOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref AnalysisResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key'"
+              method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+
+  # Query Resource
+  QueryResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !GetAtt ApiGateway.RootResourceId
+      PathPart: query
+
+  QueryMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref QueryResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${QueryFunction.Arn}/invocations'
+
+  QueryOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref QueryResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key'"
+              method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+
+  # Status Resource
+  StatusResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !GetAtt ApiGateway.RootResourceId
+      PathPart: status
+
+  StatusMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref StatusResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${StatusFunction.Arn}/invocations'
+
+  StatusOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref StatusResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+
   # Limits Resource
   LimitsResource:
     Type: AWS::ApiGateway::Resource
@@ -283,6 +503,30 @@ Resources:
             method.response.header.Access-Control-Allow-Origin: true
 
   # Lambda Permissions
+  AnalysisLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref AnalysisFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/*'
+
+  QueryLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref QueryFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/*'
+
+  StatusLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref StatusFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/*'
+
   UploadLambdaPermission:
     Type: AWS::Lambda::Permission
     Properties:
@@ -305,6 +549,12 @@ Resources:
     DependsOn:
       - UploadMethod
       - UploadOptionsMethod
+      - AnalysisMethod
+      - AnalysisOptionsMethod
+      - QueryMethod
+      - QueryOptionsMethod
+      - StatusMethod
+      - StatusOptionsMethod
       - LimitsMethod
       - LimitsOptionsMethod
     Properties:
