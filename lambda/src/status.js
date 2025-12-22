@@ -43,7 +43,8 @@ const getVideoStatus = async (videoId) => {
     try {
         const result = await dynamodb.get(params).promise();
         if (!result.Item) {
-            throw new Error('動画が見つかりません');
+            // 動画が見つからない場合は404エラーではなく、適切なレスポンスを返す
+            return null;
         }
         return result.Item;
     } catch (error) {
@@ -118,6 +119,18 @@ exports.handler = async (event) => {
         
         // ビデオ情報を取得
         const videoInfo = await getVideoStatus(videoId);
+        
+        // 動画が見つからない場合
+        if (!videoInfo) {
+            return createResponse(404, {
+                success: false,
+                error: true,
+                message: '指定された動画が見つかりません',
+                errorCode: 'VIDEO_NOT_FOUND',
+                videoId,
+                timestamp: new Date().toISOString()
+            });
+        }
         
         // ステータス情報を構築
         const status = videoInfo.status || 'unknown';

@@ -112,6 +112,11 @@ const saveVideoInfo = async (videoId, fileName, fileSize, s3Key) => {
 // メインハンドラー
 exports.handler = async (event) => {
     console.log('Upload handler called:', JSON.stringify(event, null, 2));
+    console.log('Environment variables:', {
+        BUCKET_NAME,
+        TABLE_NAME,
+        REGION
+    });
     
     try {
         // OPTIONS リクエストの処理
@@ -129,31 +134,57 @@ exports.handler = async (event) => {
         try {
             requestBody = JSON.parse(event.body || '{}');
         } catch (error) {
+            console.error('JSON parse error:', error);
             return createErrorResponse(400, 'Invalid JSON in request body', 'INVALID_JSON');
         }
         
         const { fileName, fileSize, contentType } = requestBody;
+        console.log('Request parameters:', { fileName, fileSize, contentType });
         
         // 必須パラメータのチェック
         if (!fileName || !fileSize) {
             return createErrorResponse(400, 'fileName and fileSize are required', 'MISSING_PARAMETERS');
         }
         
+        // 環境変数チェック
+        if (!BUCKET_NAME || !TABLE_NAME) {
+            console.error('Missing environment variables:', { BUCKET_NAME, TABLE_NAME });
+            return createErrorResponse(500, 'サーバー設定エラー', 'CONFIG_ERROR');
+        }
+        
         // ファイル検証
         try {
             validateFile(fileName, fileSize);
         } catch (error) {
+            console.error('File validation error:', error);
             return createErrorResponse(400, error.message, 'VALIDATION_ERROR');
         }
         
         // ビデオIDを生成
         const videoId = uuidv4();
+        console.log('Generated videoId:', videoId);
         
         // プリサインドURL生成
-        const { presignedUrl, s3Key } = await generatePresignedUrl(videoId, fileName, fileSize);
+        let presignedUrl, s3Key;
+        try {
+            const result = await generatePresignedUrl(videoId, fileName, fileSize);
+            presignedUrl = result.presignedUrl;
+            s3Key = result.s3Key;
+            console.log('Generated presigned URL for key:', s3Key);
+        } catch (error) {
+            console.error('Presigned URL generation error:', error);
+            return createErrorResponse(500, 'アップロードURLの生成に失敗しました', 'PRESIGNED_URL_ERROR');
+        }
         
         // DynamoDBに情報保存
-        const videoInfo = await saveVideoInfo(videoId, fileName, fileSize, s3Key);
+        let videoInfo;
+        try {
+            videoInfo = await saveVideoInfo(videoId, fileName, fileSize, s3Key);
+            console.log('Saved video info successfully');
+        } catch (error) {
+            console.error('DynamoDB save error:', error);
+            return createErrorResponse(500, '動画情報の保存に失敗しました', 'DYNAMODB_ERROR');
+        }
         
         // 成功レスポンス
         return createResponse(200, {
@@ -175,9 +206,11 @@ exports.handler = async (event) => {
         
     } catch (error) {
         console.error('Upload handler error:', error);
+        console.error('Error stack:', error.stack);
         
         // AWS サービスエラーの詳細処理
         if (error.code) {
+            console.error('AWS Error Code:', error.code);
             switch (error.code) {
                 case 'NoSuchBucket':
                     return createErrorResponse(500, 'ストレージバケットが見つかりません', 'BUCKET_NOT_FOUND');
