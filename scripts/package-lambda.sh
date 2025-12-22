@@ -47,13 +47,13 @@ for FUNCTION in "${FUNCTIONS[@]}"; do
     else
         echo "⚠️  node_modules が見つかりません。依存関係をインストールします..."
         cd "$TEMP_DIR"
-        npm install --production
+        npm install --production --silent
         cd "$PROJECT_ROOT"
     fi
     
     # ZIPファイルを作成
     cd "$TEMP_DIR"
-    zip -r "$DIST_DIR/$FUNCTION.zip" . -x "*.git*" "*.DS_Store*" "test/*" "tests/*"
+    zip -r "$DIST_DIR/$FUNCTION.zip" . -x "*.git*" "*.DS_Store*" "test/*" "tests/*" > /dev/null
     cd "$PROJECT_ROOT"
     
     # 一時ディレクトリを削除
@@ -64,4 +64,4 @@ done
 
 echo "🎉 すべてのLambda関数のパッケージ化が完了しました！"
 echo "📁 パッケージファイルの場所: $DIST_DIR"
-ls -la "$DIST_DIR"/*.zip
+ls -la "$DIST_DIR"/*.zip 2>/dev/null || echo "⚠️ ZIPファイルが見つかりません"
