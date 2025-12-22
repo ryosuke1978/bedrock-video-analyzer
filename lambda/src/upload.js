@@ -2,6 +2,7 @@ const AWS = require('aws-sdk');
 const { v4: uuidv4 } = require('uuid');
 
 // AWS サービスの初期化
+AWS.config.update({ region: process.env.REGION || 'ap-northeast-1' });
 const s3 = new AWS.S3();
 const dynamodb = new AWS.DynamoDB.DocumentClient();
 
@@ -62,17 +63,23 @@ const generatePresignedUrl = async (videoId, fileName, fileSize) => {
         Bucket: BUCKET_NAME,
         Key: key,
         Expires: 3600, // 1時間
-        ContentType: 'video/*',
-        ContentLength: fileSize
+        ContentType: 'video/*'
     };
+    
+    console.log('Generating presigned URL with params:', JSON.stringify(params, null, 2));
     
     try {
         const presignedUrl = await s3.getSignedUrlPromise('putObject', params);
-        console.log('Generated presigned URL for:', key);
+        console.log('Successfully generated presigned URL for:', key);
         return { presignedUrl, s3Key: key };
     } catch (error) {
         console.error('Failed to generate presigned URL:', error);
-        throw new Error('アップロードURLの生成に失敗しました');
+        console.error('Error details:', {
+            code: error.code,
+            message: error.message,
+            stack: error.stack
+        });
+        throw new Error(`アップロードURLの生成に失敗しました: ${error.message}`);
     }
 };
 
