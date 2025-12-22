@@ -1,30 +1,50 @@
 # デプロイメント状況
 
-## 最新のデプロイ試行
+## 最新のデプロイメント
 
-- **日時**: 2024年12月19日
-- **環境**: dev
-- **状況**: S3バケット重複エラーを解決後、再デプロイ実行中
+### 日時
+2024年12月22日
 
-## 解決した問題
+### 変更内容
+- Lambda関数の実装コードをデプロイ
+- パッケージ化スクリプトとデプロイスクリプトを追加
+- GitHub Actionsワークフローを更新
 
-### S3バケット重複エラー
-- **問題**: 既存のS3バケットと名前が重複
-- **解決**: 既存バケットを削除
-- **対応**: CloudFormationで新しいバケットを作成
+### デプロイされたコンポーネント
 
-## 期待される結果
+#### Lambda関数
+- ✅ **upload.js** - 動画アップロード用プリサインドURL生成
+- ✅ **analysis.js** - Amazon Bedrock TwelveLabs Pegasus 1.2による動画解析
+- ✅ **query.js** - 動画に関する質問応答機能
+- ✅ **status.js** - 動画処理ステータス確認
+- ✅ **limits.js** - システム制限情報取得
 
-1. ✅ CloudFormationスタック作成成功
-2. ✅ S3バケット作成成功
-3. ✅ DynamoDBテーブル作成成功
-4. ✅ Lambda関数デプロイ成功
-5. ✅ API Gateway設定成功
-6. ✅ API エンドポイントテスト成功
+#### インフラストラクチャ
+- ✅ **S3バケット** - 動画ファイルストレージ
+- ✅ **DynamoDB** - 動画メタデータと解析結果保存
+- ✅ **API Gateway** - RESTful APIエンドポイント
+- ✅ **IAMロール** - Lambda実行権限
 
-## 次のステップ
+### API エンドポイント
+- **ベースURL**: https://a2k8m1yy62.execute-api.ap-northeast-1.amazonaws.com/dev
+- **Limits**: GET /limits
+- **Upload**: POST /upload
+- **Analysis**: POST /analysis
+- **Query**: POST /query
+- **Status**: GET /status
 
-デプロイ成功後：
-1. API Gateway URLの確認
-2. フロントエンド開発の開始
-3. Bedrock統合の実装
+### 次のステップ
+1. GitHub Actionsワークフローの実行確認
+2. Lambda関数コードの更新確認
+3. エンドツーエンドテストの実行
+4. フロントエンドとの統合テスト
+
+### 注意事項
+- Bedrockサービスが利用できない場合、モックレスポンスが返されます
+- 現在の設定では `ENABLE_MOCK: 'true'` になっています
+- 本格運用時はBedrockの権限設定が必要です
+
+### トラブルシューティング
+- Lambda関数が更新されない場合は、手動でGitHub Actionsを実行してください
+- API Gateway URLが変更された場合は、フロントエンドの設定を更新してください
+- エラーが発生した場合は、CloudWatchログを確認してください

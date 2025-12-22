@@ -14,7 +14,8 @@ const REGION = process.env.REGION || 'ap-northeast-1';
 const CORS_HEADERS = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key',
-    'Access-Control-Allow-Methods': 'POST,OPTIONS'
+    'Access-Control-Allow-Methods': 'POST,OPTIONS',
+    'Content-Type': 'application/json'
 };
 
 // レスポンス作成ヘルパー

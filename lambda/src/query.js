@@ -15,7 +15,8 @@ const PEGASUS_MODEL_ID = process.env.PEGASUS_MODEL_ID || 'twelvelabs.pegasus-1-2
 const CORS_HEADERS = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key',
-    'Access-Control-Allow-Methods': 'POST,OPTIONS'
+    'Access-Control-Allow-Methods': 'POST,OPTIONS',
+    'Content-Type': 'application/json'
 };
 
 // レスポンス作成ヘルパー
