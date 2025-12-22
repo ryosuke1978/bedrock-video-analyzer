@@ -75,9 +75,15 @@ jobs:
         
     - name: Build Lambda functions
       run: |
-        echo "Skipping Lambda build - using CloudFormation inline code"
-        echo "Lambda functions are deployed directly via CloudFormation template"
-        echo "No separate build or compilation required for this deployment"
+        echo "📦 Lambda関数をパッケージ化中..."
+        
+        # パッケージ化スクリプトに実行権限を付与
+        chmod +x scripts/package-lambda.sh
+        
+        # Lambda関数をパッケージ化
+        ./scripts/package-lambda.sh
+        
+        echo "✅ Lambda関数のパッケージ化が完了しました"
         
     - name: Validate CloudFormation template
       run: |
@@ -250,12 +256,17 @@ jobs:
         
         echo "API tests completed successfully!"
         
-    - name: Update Lambda function code (if needed)
-      if: matrix.environment != 'prod'
+    - name: Update Lambda function code
       run: |
-        echo "Lambda function code update skipped - using CloudFormation inline code for now"
-        # Note: Lambda functions are deployed via CloudFormation with inline code
-        # Future enhancement: Deploy from S3 or update function code separately
+        echo "🚀 Lambda関数コードを更新中..."
+        
+        # デプロイスクリプトに実行権限を付与
+        chmod +x scripts/deploy-lambda-code.sh
+        
+        # Lambda関数コードをデプロイ
+        ./scripts/deploy-lambda-code.sh ${{ matrix.environment }} ${{ env.AWS_REGION }}
+        
+        echo "✅ Lambda関数コードの更新が完了しました"
         
     - name: Notify deployment status
       if: always()
